@@ -5,7 +5,7 @@ postMessage(['sliders', defaultControls.concat([
   {label: 'Lines', value: 6, min: 2, max: 50, step: 2},
   {label: 'Sublines', value: 3, min: 1, max: 10}
   ,{label: 'Amplitude', value: 0.1, min: 0.1, max: 5, step: 0.1}
-  ,{label: 'Sampling', value: 5, min: 2, max: 10, step: 0.1},
+  ,{label: 'Sampling', value: 5, min: 2, max: 10, step: 0.1}
 ])]);
 
 
@@ -47,6 +47,7 @@ onmessage = function(e) {
     tile.d[rec] = true;
     return false;
   }
+  // Follow lines from left to right
   function followLineLR(prevTile,i,j,line) {
     //console.log('followLineLR',prevTile,i,j,line);
     if (i*tileSize>=config.width) {
@@ -69,6 +70,7 @@ onmessage = function(e) {
       followLineTB(thisTile,i,j+1,line);
     }
   }
+  // Follow lines from bottom to top
   function followLineBT(prevTile,i,j,line) {
     //console.log('followLineBT',prevTile,i,j,line);
     if (j<0) {
@@ -91,6 +93,7 @@ onmessage = function(e) {
       followLineRL(thisTile,i-1,j,line)
     }
   }
+  // Follow lines from top to bottom
   function followLineTB(prevTile,i,j,line) {
     //console.log('followLineTB',prevTile,i,j,line);
     if (j*tileSize >= config.height) {
@@ -113,6 +116,7 @@ onmessage = function(e) {
       followLineLR(thisTile,i+1,j,line)
     }
   }
+  // Follow lines from right to left
   function followLineRL(prevTile,i,j,line) {
     //console.log('followLineRL',prevTile,i,j,line);
     if (i<0) {
@@ -134,6 +138,28 @@ onmessage = function(e) {
       // Next tile is above
       followLineBT(thisTile,i,j-1,line);
     }
+  }
+  function addSubline(a,b,line) {
+    const f45 = 1/(2**0.5); //Math.sin(Math.PI/4);
+    let [x0,y0] = a;
+    let [x1,y1] = b;
+    //let theta = Math.atan((y1-y0)/(x1-x0));
+    //let dx = -Math.cos(theta);
+    //let dy = -Math.sin(theta);  
+    let len = ((x1-x0)**2+(y1-y0)**2)**0.5;
+    //console.log('len',len);
+    let dx = (x1 > x0 ? f45 : -f45);
+    let dy = (y1 > y0 ? f45 : -f45);
+    let z=0;
+    for (; z<len; z+=config.Sampling) {
+      let x = x0 + z * dx;
+      let y = y0 + z * dy;
+      let pixel = getPixel(x,y);
+      let r = (isNaN(pixel) ? 0 : pixel * amplitude);
+      //console.log('x',x,'y',y,'r',r,[x + config.Sampling * dx - r * dy, y + config.Sampling * dy + r * dx]);
+      line.push([x + config.Sampling * dx - r * dy, y + config.Sampling * dy + r * dx]);
+    }
+    //console.log(line);
   }
   // Randomise the tile orientations
   for(let x=0;x<config.width/tileSize;x+=1) {
@@ -187,45 +213,24 @@ onmessage = function(e) {
   }
   // Trace the lines with sublines
   const sublines = config.Sublines;
-  const amplitude = config.Amplitude / sublines / (tileSize / lineSpacing);
+  // Adding divide by 10 until I can figure out controls
+  const amplitude = config.Amplitude / sublines / (tileSize / lineSpacing) / 10;
   //config.Sampling = 5;
   console.log('amplitude=', amplitude);
   const line_count = lines.length;
   for (let i=0; i<line_count; i+=1) {
+    let line = [];
     //break;
-    for (let j=0; j<lines[i].length-1; j+=1) {
-      const f45 = 1/(2**0.5); //Math.sin(Math.PI/4);
-      let line = [];
-      let [x0,y0] = lines[i][j];
-      let [x1,y1] = lines[i][j+1];
-      //let theta = Math.atan((y1-y0)/(x1-x0));
-      //let dx = -Math.cos(theta);
-      //let dy = -Math.sin(theta);  
-      let len = ((x1-x0)**2+(y1-y0)**2)**0.5;
-      //console.log('len',len);
-      let dx = (x1 > x0 ? f45 : -f45);
-      let dy = (y1 > y0 ? f45 : -f45);
-      let z=0;
-      for (; z<len; z+=config.Sampling) {
-        let x = x0 + z * dx;
-        let y = y0 + z * dy;
-        let pixel = getPixel(x,y);
-        let r = (isNaN(pixel) ? 0 : pixel * amplitude);
-        //console.log('x',x,'y',y,'r',r,[x + config.Sampling * dx - r * dy, y + config.Sampling * dy + r * dx]);
-        line.push([x + config.Sampling * dx - r * dy, y + config.Sampling * dy + r * dx]);
-      }
-      for (; z>0; z-=config.Sampling) {
-        let x = x0 + z * dx;
-        let y = y0 + z * dy;
-        let pixel = getPixel(x,y);
-        let r = (isNaN(pixel) ? 0 : pixel * amplitude);
-        //console.log('x',x,'y',y,'r',r,[x + config.Sampling * dx - r * dy, y + config.Sampling * dy + r * dx]);
-        line.push([x - config.Sampling * dx + r * dy, y - config.Sampling * dy - r * dx]);
-      }
-      if (line.length > 1) { lines.push(line); }
-      //console.log(line);
+    let j;
+    for (j=0; j<lines[i].length-1; j+=1) {
+      addSubline(lines[i][j], lines[i][j+1], line);
       //break;
     }
+    for (; j>1; j--) {
+      addSubline(lines[i][j], lines[i][j-1], line);
+      //break;
+    }
+    if (line.length > 1) { lines.push(line); }
     //break;
   }
 
