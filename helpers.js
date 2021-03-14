@@ -51,8 +51,8 @@ function autocontrast(pixData, cutoff){
 
   function luma(x,y) {
     let i = 4*(x+width*y)
-    return pixData.data[i]*0.299 + pixData.data[i+1]*0.587 + pixData.data[i]*0.114 // ITU-R 601-2
-//    return pixData.data[i]*0.2125 + pixData.data[i+1]*0.7154 + pixData.data[i]*0.0721 // ITU-R 709
+    return pixData.data[i]*0.299 + pixData.data[i+1]*0.587 + pixData.data[i+2]*0.114 // ITU-R 601-2
+//    return pixData.data[i]*0.2125 + pixData.data[i+1]*0.7154 + pixData.data[i+2]*0.0721 // ITU-R 709
   }
 
   let hist = []
@@ -247,6 +247,24 @@ function postLines(data){
 }
 
 function postCircles(data){
+  let pathstring = ""
+  if (data[0].x) {
+    for (let p in data) {
+      let {x,y,r}=data[p];
+      if (r<0.001) r=0.001;
+      pathstring += 'M'+x.toFixed(2)+','+(y-r).toFixed(2) +' a '+r.toFixed(3)+' '+r.toFixed(3)+' 0 1 0 0.001 0Z ';
+    }
+  } else {
+    for (let p in data) {
+      let [x,y,r]=data[p];
+      if (r<0.001) r=0.001;
+      pathstring += 'M'+x.toFixed(2)+','+(y-r).toFixed(2) +' a '+r.toFixed(3)+' '+r.toFixed(3)+' 0 1 0 0.001 0Z ';
+    }
+  }
+  postMessage(['svg-path',pathstring])
+}
+
+function postArcs(data){
   let pathstring = ""
   if (data[0].x) {
     for (let p in data) {
