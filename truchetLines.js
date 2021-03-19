@@ -8,232 +8,256 @@ postMessage(['sliders', defaultControls.concat([
   ,{label: 'Sampling', value: 5, min: 2, max: 10, step: 0.1}
 ])]);
 
-
-onmessage = function(e) {
-  const [ config, pixData ] = e.data;
-  console.log('config =', config);
-  const getPixel = pixelProcessor(config, pixData);
-  let tiles = [];
-  let lines = [];
-  const tileSize = config['Tile size'];
-  const lineSpacing = 2*tileSize/Math.round(config['Lines'],2);
-  let offset;
-  // style=/
-  function tileA(x0,y0) {
-    let x1=x0+tileSize;
-    let y1=y0+tileSize;
-    
-    for(let x=lineSpacing/2;x<tileSize;x+=lineSpacing) {
-      lines.push([[x0+x,y0],[x0,y0+x]]);
-      lines.push([[x0+x,y1],[x1,y0+x]]);
+(function(){
+  var tiles, config, pixData;
+  onmessage = function(e) {
+    console.log(tiles);
+    pixData = e.data[1];
+    if (process_config(e.data[0]) || !tiles) {
+      randomiseTiles();
     }
+    render();
   }
-  // style=\
-  function tileB(x0,y0) {
-    let x1=x0+tileSize;
-    let y1=y0+tileSize;
-    
-    for(let x=lineSpacing/2;x<tileSize;x+=lineSpacing) {
-      lines.push([[x0+x,y0],[x1,y1-x]]);
-      lines.push([[x0+x,y1],[x0,y1-x]]);
+  function randomiseTiles() {
+    tiles = Array();
+    // Randomise the tile orientations
+    for(let x=0;x<config.width/config.tileSize;x+=1) {
+      tiles[x] = [];
+      for(let y=0;y<config.height/config.tileSize;y+=1) {
+        tiles[x][y] = {t:'',d:[]};
+        if (Math.floor(Math.random()*2.0) < 1) {
+          tiles[x][y].t = "A";
+          //tileA(x*config.tileSize,y*config.tileSize);
+        }
+        else {
+          tiles[x][y].t = "B";
+          //tileB(x*config.tileSize,y*config.tileSize);
+        }
+      }
     }
+    //console.log(tiles);
   }
-  function register(i,j,offset) {
-    let tile = tiles[i][j];
-    let rec = Math.floor(offset/lineSpacing);
-    if (tile.d[rec] === true) {
-      return true;
+  function process_config(new_config) {
+    console.log('config =', config);
+    console.log('new_config =', new_config);
+    let rc = false;
+    if (!config) {
+      config = Object()
+      Object.assign(config, new_config);
+      rc = true;
     }
-    tile.d[rec] = true;
-    return false;
+    config.Lines = new_config.Lines;
+    config.Sublines = new_config.Sublines;
+    config.Amplitude = new_config.Amplitude;
+    config.Sampling = new_config.Sampling;
+    if (new_config.width != config.width
+    ||  new_config.height != config.height
+    ||  new_config['Tile size'] != config.tileSize) {
+      config.width = new_config.width;
+      config.height = new_config.height;
+      config.tileSize = new_config['Tile size'];
+      config.htiles = config.width / config.tileSize;
+      config.vtiles = config.height / config.tileSize;
+      rc = true;
+    }
+    config.lineSpacing = 2*config.tileSize/Math.round(config.Lines,2);
+    return rc;
   }
-  // Follow lines from left to right
-  function followLineLR(prevTile,i,j,line) {
-    //console.log('followLineLR',prevTile,i,j,line);
-    if (i*tileSize>=config.width) {
-      line.push([i*tileSize,j*tileSize+offset]);
-      return;
+  function render() {
+    const getPixel = pixelProcessor(config, pixData);
+    let lines = [];
+    let offset;
+    // style=/
+    function tileA(x0,y0) {
+      let x1=x0+config.tileSize;
+      let y1=y0+config.tileSize;
+      
+      for(let x=config.lineSpacing/2;x<config.tileSize;x+=config.lineSpacing) {
+        lines.push([[x0+x,y0],[x0,y0+x]]);
+        lines.push([[x0+x,y1],[x1,y0+x]]);
+      }
     }
-    const thisTile = tiles[i][j].t;
-    // If this tile is different to the previous one, add a point on the line
-    if (thisTile != prevTile) {
-      line.push([i*tileSize,j*tileSize+offset]);
+    // style=\
+    function tileB(x0,y0) {
+      let x1=x0+config.tileSize;
+      let y1=y0+config.tileSize;
+      
+      for(let x=config.lineSpacing/2;x<config.tileSize;x+=config.lineSpacing) {
+        lines.push([[x0+x,y0],[x1,y1-x]]);
+        lines.push([[x0+x,y1],[x0,y1-x]]);
+      }
     }
-    if (thisTile == 'A') {
-      if (register(i,j,offset) === true) { return; }
-      // Next tile is above (j-1)
-      followLineBT(thisTile,i,j-1,line);
+    function register(i,j,offset) {
+      let tile = tiles[i][j];
+      let rec = Math.floor(offset/config.lineSpacing);
+      if (tile.d[rec] === true) {
+        return true;
+      }
+      tile.d[rec] = true;
+      return false;
     }
-    else {
-      if (register(i,j,offset) === true) { return; }
-      // Next tile is below (j+1)
-      followLineTB(thisTile,i,j+1,line);
-    }
-  }
-  // Follow lines from bottom to top
-  function followLineBT(prevTile,i,j,line) {
-    //console.log('followLineBT',prevTile,i,j,line);
-    if (j<0) {
-      line.push([i*tileSize+offset,0]);
-      return;
-    }
-    const thisTile = tiles[i][j].t;
-    // If this tile is different to the previous one, add a point on the line
-    if (thisTile != prevTile) {
-      line.push([i*tileSize+offset,(j+1)*tileSize]);
-    }
-    if (thisTile == 'A') {
-      if (register(i,j,tileSize+offset) === true) { return; }
-      // Next tile is to the right (i+1)
-      followLineLR(thisTile,i+1,j,line);
-    }
-    else {
-      if (register(i,j,offset) === true) { return; }
-      // Next tile is to the left (i-1)
-      followLineRL(thisTile,i-1,j,line)
-    }
-  }
-  // Follow lines from top to bottom
-  function followLineTB(prevTile,i,j,line) {
-    //console.log('followLineTB',prevTile,i,j,line);
-    if (j*tileSize >= config.height) {
-      line.push([(i+1)*tileSize-offset,j*tileSize]);
-      return;
-    }
-    const thisTile = tiles[i][j].t;
-    // If this tile is different to the previous one, add a point on the line
-    if (thisTile != prevTile) {
-      line.push([(i+1)*tileSize-offset,j*tileSize]);
-    }
-    if (thisTile == 'A') {
-      if (register(i,j,offset) === true) { return; }
-      // Next tile is to the left
-      followLineRL(thisTile,i-1,j,line);
-    }
-    else {
-      if (register(i,j,tileSize+offset) === true) { return; }
-      // Next tile is to the right
-      followLineLR(thisTile,i+1,j,line)
-    }
-  }
-  // Follow lines from right to left
-  function followLineRL(prevTile,i,j,line) {
-    //console.log('followLineRL',prevTile,i,j,line);
-    if (i<0) {
-      line.push([(i+1)*tileSize,(j+1)*tileSize-offset]);
-      return;
-    }
-    const thisTile = tiles[i][j].t;
-    // If this tile is different to the previous one, add a point on the line
-    if (thisTile != prevTile) {
-      line.push([(i+1)*tileSize,(j+1)*tileSize-offset]);
-    }
-    if (thisTile == 'A') {
-      if (register(i,j,tileSize+offset) === true) { return; }
-      // Next tile is below
-      followLineTB(thisTile,i,j+1,line);
-    }
-    else {
-      if (register(i,j,tileSize+offset) === true) { return; }
-      // Next tile is above
-      followLineBT(thisTile,i,j-1,line);
-    }
-  }
-  function addSubline(a,b,line) {
-    const f45 = 1/(2**0.5); //Math.sin(Math.PI/4);
-    let [x0,y0] = a;
-    let [x1,y1] = b;
-    //let theta = Math.atan((y1-y0)/(x1-x0));
-    //let dx = -Math.cos(theta);
-    //let dy = -Math.sin(theta);  
-    let len = ((x1-x0)**2+(y1-y0)**2)**0.5;
-    //console.log('len',len);
-    let dx = (x1 > x0 ? f45 : -f45);
-    let dy = (y1 > y0 ? f45 : -f45);
-    let z=0;
-    for (; z<len; z+=config.Sampling) {
-      let x = x0 + z * dx;
-      let y = y0 + z * dy;
-      let pixel = getPixel(x,y);
-      let r = (isNaN(pixel) ? 0 : pixel * amplitude);
-      //console.log('x',x,'y',y,'r',r,[x + config.Sampling * dx - r * dy, y + config.Sampling * dy + r * dx]);
-      line.push([x + config.Sampling * dx - r * dy, y + config.Sampling * dy + r * dx]);
-    }
-    //console.log(line);
-  }
-  // Randomise the tile orientations
-  for(let x=0;x<config.width/tileSize;x+=1) {
-    tiles[x] = [];
-    for(let y=0;y<config.height/tileSize;y+=1) {
-      tiles[x][y] = {t:'',d:[]};
-      if (Math.floor(Math.random()*2.0) < 1) {
-        tiles[x][y].t = "A";
-        //tileA(x*tileSize,y*tileSize);
+    // Follow lines from left to right
+    function followLineLR(prevTile,i,j,line) {
+      //console.log('followLineLR',prevTile,i,j,line);
+      if (i*config.tileSize>=config.width) {
+        line.push([i*config.tileSize,j*config.tileSize+offset]);
+        return;
+      }
+      const thisTile = tiles[i][j].t;
+      // If this tile is different to the previous one, add a point on the line
+      if (thisTile != prevTile) {
+        line.push([i*config.tileSize,j*config.tileSize+offset]);
+      }
+      if (thisTile == 'A') {
+        if (register(i,j,offset) === true) { return; }
+        // Next tile is above (j-1)
+        followLineBT(thisTile,i,j-1,line);
       }
       else {
-        tiles[x][y].t = "B";
-        //tileB(x*tileSize,y*tileSize);
+        if (register(i,j,offset) === true) { return; }
+        // Next tile is below (j+1)
+        followLineTB(thisTile,i,j+1,line);
       }
     }
-  }
-  //console.log(tiles);
-  // Try drawing lines from the top and bottom
-  for (let i=0; i<config.width/tileSize; i+=1) {
-    for (offset=lineSpacing/2; offset<tileSize; offset+=lineSpacing) {
-      let line = [];
-      followLineTB('',i,0,line);
-      if (line.length > 1) { lines.push(line); }
-      line = [];
-      followLineBT('',i,(config.height/tileSize)>>0,line);
-      if (line.length > 1) { lines.push(line); }
+    // Follow lines from bottom to top
+    function followLineBT(prevTile,i,j,line) {
+      //console.log('followLineBT',prevTile,i,j,line);
+      if (j<0) {
+        line.push([i*config.tileSize+offset,0]);
+        return;
+      }
+      const thisTile = tiles[i][j].t;
+      // If this tile is different to the previous one, add a point on the line
+      if (thisTile != prevTile) {
+        line.push([i*config.tileSize+offset,(j+1)*config.tileSize]);
+      }
+      if (thisTile == 'A') {
+        if (register(i,j,config.tileSize+offset) === true) { return; }
+        // Next tile is to the right (i+1)
+        followLineLR(thisTile,i+1,j,line);
+      }
+      else {
+        if (register(i,j,offset) === true) { return; }
+        // Next tile is to the left (i-1)
+        followLineRL(thisTile,i-1,j,line)
+      }
     }
-  }
-  // Try drawing lines from the left and right sides
-  for (let j=0; j<config.height/tileSize; j+=1) {
-    for (offset=lineSpacing/2; offset<tileSize; offset+=lineSpacing) {
-      let line = [];
-      followLineLR('',0,j,line);
-      if (line.length > 1) { lines.push(line); }
-      line = [];
-      followLineRL('',(config.width/tileSize)>>0,j,line);
-      if (line.length > 1) { lines.push(line); }
+    // Follow lines from top to bottom
+    function followLineTB(prevTile,i,j,line) {
+      //console.log('followLineTB',prevTile,i,j,line);
+      if (j*config.tileSize >= config.height) {
+        line.push([(i+1)*config.tileSize-offset,j*config.tileSize]);
+        return;
+      }
+      const thisTile = tiles[i][j].t;
+      // If this tile is different to the previous one, add a point on the line
+      if (thisTile != prevTile) {
+        line.push([(i+1)*config.tileSize-offset,j*config.tileSize]);
+      }
+      if (thisTile == 'A') {
+        if (register(i,j,offset) === true) { return; }
+        // Next tile is to the left
+        followLineRL(thisTile,i-1,j,line);
+      }
+      else {
+        if (register(i,j,config.tileSize+offset) === true) { return; }
+        // Next tile is to the right
+        followLineLR(thisTile,i+1,j,line)
+      }
     }
-  }
-  // Fill in any internal lines that tracing lines from the perimeter has missed
-  for (let i=0; i<config.width/tileSize; i+=1) {
-    for (let j=0; j<config.height/tileSize; j+=1) {
-      for (offset=lineSpacing/2; offset<tileSize; offset+=lineSpacing) {
+    // Follow lines from right to left
+    function followLineRL(prevTile,i,j,line) {
+      //console.log('followLineRL',prevTile,i,j,line);
+      if (i<0) {
+        line.push([(i+1)*config.tileSize,(j+1)*config.tileSize-offset]);
+        return;
+      }
+      const thisTile = tiles[i][j].t;
+      // If this tile is different to the previous one, add a point on the line
+      if (thisTile != prevTile) {
+        line.push([(i+1)*config.tileSize,(j+1)*config.tileSize-offset]);
+      }
+      if (thisTile == 'A') {
+        if (register(i,j,config.tileSize+offset) === true) { return; }
+        // Next tile is below
+        followLineTB(thisTile,i,j+1,line);
+      }
+      else {
+        if (register(i,j,config.tileSize+offset) === true) { return; }
+        // Next tile is above
+        followLineBT(thisTile,i,j-1,line);
+      }
+    }
+    function addSubline(a,b,line) {
+      const f45 = 1/(2**0.5); //Math.sin(Math.PI/4);
+      let [x0,y0] = a;
+      let [x1,y1] = b;
+      line.push([x0,y0]);
+      let len = ((x1-x0)**2+(y1-y0)**2)**0.5 - config.Sampling;
+      let dx = (x1 > x0 ? f45 : -f45);
+      let dy = (y1 > y0 ? f45 : -f45);
+      for (let z=config.Sampling; z<len; z+=config.Sampling) {
+        let x = x0 + z * dx;
+        let y = y0 + z * dy;
+        let pixel = getPixel(x,y);
+        let r = (isNaN(pixel) ? 0 : pixel * amplitude);
+        line.push([x - r * dy, y + r * dx]);
+      }
+      line.push([x1,y1]);
+      //console.log(line);
+    }
+    // Try drawing lines from the top and bottom
+    for (let i=0; i<config.width/config.tileSize; i+=1) {
+      for (offset=config.lineSpacing/2; offset<config.tileSize; offset+=config.lineSpacing) {
         let line = [];
-        if (tiles[i][j].t == "A") {
-          followLineBT('',i,j,line);
-        }
+        followLineTB('',i,0,line);
+        if (line.length > 1) { lines.push(line); }
+        line = [];
+        followLineBT('',i,(config.height/config.tileSize)>>0,line);
         if (line.length > 1) { lines.push(line); }
       }
     }
-  }
-  // Trace the lines with sublines
-  const sublines = config.Sublines;
-  // Adding divide by 10 until I can figure out controls
-  const amplitude = config.Amplitude / sublines / (tileSize / lineSpacing) / 10;
-  //config.Sampling = 5;
-  console.log('amplitude=', amplitude);
-  const line_count = lines.length;
-  for (let i=0; i<line_count; i+=1) {
-    let line = [];
-    //break;
-    let j;
-    for (j=0; j<lines[i].length-1; j+=1) {
-      addSubline(lines[i][j], lines[i][j+1], line);
-      //break;
+    // Try drawing lines from the left and right sides
+    for (let j=0; j<config.height/config.tileSize; j+=1) {
+      for (offset=config.lineSpacing/2; offset<config.tileSize; offset+=config.lineSpacing) {
+        let line = [];
+        followLineLR('',0,j,line);
+        if (line.length > 1) { lines.push(line); }
+        line = [];
+        followLineRL('',(config.width/config.tileSize)>>0,j,line);
+        if (line.length > 1) { lines.push(line); }
+      }
     }
-    for (; j>1; j--) {
-      addSubline(lines[i][j], lines[i][j-1], line);
-      //break;
+    // Fill in any internal lines that tracing lines from the perimeter has missed
+    for (let i=0; i<config.width/config.tileSize; i+=1) {
+      for (let j=0; j<config.height/config.tileSize; j+=1) {
+        for (offset=config.lineSpacing/2; offset<config.tileSize; offset+=config.lineSpacing) {
+          let line = [];
+          if (tiles[i][j].t == "A") {
+            followLineBT('',i,j,line);
+          }
+          if (line.length > 1) { lines.push(line); }
+        }
+      }
     }
-    if (line.length > 1) { lines.push(line); }
-    //break;
+    // Trace the lines with sublines
+    // Adding divide by 10 until I can figure out controls
+    const amplitude = config.Amplitude / config.Sublines / (config.tileSize / config.lineSpacing) / 10;
+    //config.Sampling = 5;
+    console.log('amplitude=', amplitude);
+    const line_count = lines.length;
+    for (let i=0; i<line_count; i+=1) {
+      let line = [];
+      let j;
+      for (j=0; j<lines[i].length-1; j++) {
+        addSubline(lines[i][j], lines[i][j+1], line);
+      }
+      for (; j>0; j--) {
+        addSubline(lines[i][j], lines[i][j-1], line);
+      }
+      if (line.length > 1) { lines.push(line); }
+    }
+    postLines(lines);
   }
 
-  //console.log(tiles);
-  postLines(lines);
-}
+})();
